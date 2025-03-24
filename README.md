@@ -1,5 +1,7 @@
 # Silassaq - Greenland Weather App
 
+WIP - Not Functiona ATM
+
 Silassaq is a weather application specifically designed for Greenland, providing accurate weather forecasts for various locations across the country. The app integrates with the MET Norway Weather API to deliver reliable weather data.
 
 ## Features
