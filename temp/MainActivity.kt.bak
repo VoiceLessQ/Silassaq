@@ -1,0 +1,1321 @@
+package com.example.silassaq
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.silassaq.network.WeatherService
+import com.example.silassaq.ui.components.*
+import com.example.silassaq.ui.theme.*
+import com.example.silassaq.viewmodel.WeatherViewModel
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.TextStyle
+import java.util.Locale
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            var isDarkMode by remember { mutableStateOf(true) }
+            
+            SilassaqTheme(forceDarkTheme = isDarkMode) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = if (isDarkMode) DarkNavyBackground else LightModeBackground
+                ) {
+                    WeatherApp(
+                        isDarkMode = isDarkMode,
+                        onToggleDarkMode = { isDarkMode = !isDarkMode }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@Composable
+fun WeatherApp(
+    isDarkMode: Boolean,
+    onToggleDarkMode: () -> Unit
+) {
+    // Use viewModel to manage state
+    val viewModel = viewModel<WeatherViewModel>()
+    
+    // Drawer state for the hamburger menu
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                modifier = Modifier.width(300.dp),
+                drawerContainerColor = if (isDarkMode) DarkNavyCardLight else CardLight
+            ) {
+                // Drawer header
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = if (isDarkMode) 
+                                    listOf(AccentBlue, DarkNavyCard) 
+                                else 
+                                    listOf(MeteoBlue, SkyBlue)
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Weather App",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+    Text(
+                            text = "Weather forecast app",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Menu items
+                DrawerMenuItem(
+                    icon = Icons.Filled.Favorite,
+                    title = "Favorite Locations",
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                    },
+                    isDarkMode = isDarkMode
+                )
+                
+                DrawerMenuItem(
+                    icon = Icons.Filled.LocationOn,
+                    title = "Manage Locations",
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                    },
+                    isDarkMode = isDarkMode
+                )
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 16.dp),
+                    color = if (isDarkMode) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.1f)
+                )
+                
+                DrawerMenuItem(
+                    icon = Icons.Filled.Settings,
+                    title = if (viewModel.useGreenlandicFormat) "Switch to English" else "Switch to Greenlandic",
+                    onClick = {
+                        viewModel.toggleLanguage()
+                        scope.launch {
+                            drawerState.close()
+                        }
+                    },
+                    isDarkMode = isDarkMode
+                )
+                
+                DrawerMenuItem(
+                    icon = if (isDarkMode) Icons.Filled.Info else Icons.Filled.Info,
+                    title = if (isDarkMode) "Light Mode" else "Dark Mode",
+                    onClick = {
+                        onToggleDarkMode()
+                        scope.launch {
+                            drawerState.close()
+                        }
+                    },
+                    isDarkMode = isDarkMode
+                )
+                
+                DrawerMenuItem(
+                    icon = Icons.Filled.Settings,
+                    title = "Settings",
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                    },
+                    isDarkMode = isDarkMode
+                )
+                
+                Spacer(modifier = Modifier.weight(1f))
+                
+                DrawerMenuItem(
+                    icon = Icons.Filled.Info,
+                    title = "About",
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                        }
+                    },
+                    isDarkMode = isDarkMode
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        },
+        content = {
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Weather content
+                when (val state = viewModel.weatherState) {
+                    is WeatherViewModel.WeatherState.Loading -> {
+                        LoadingScreen(isDarkMode = isDarkMode)
+                    }
+                    is WeatherViewModel.WeatherState.Success -> {
+                        WeatherContent(
+                            weather = state.data,
+                            useGreenlandicFormat = viewModel.useGreenlandicFormat,
+                            translateCondition = { viewModel.translateWeatherCondition(it) },
+                            onMenuClick = {
+                                scope.launch {
+                                    drawerState.open()
+                                }
+                            },
+                            onLocationSelected = { viewModel.selectLocation(it) },
+                            isDarkMode = isDarkMode
+                        )
+                    }
+                    is WeatherViewModel.WeatherState.Error -> {
+                        ErrorScreen(
+                            message = state.message,
+                            onRetry = { viewModel.refreshWeather() },
+                            isDarkMode = isDarkMode
+                        )
+                    }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+fun DrawerMenuItem(
+    icon: ImageVector,
+    title: String,
+    onClick: () -> Unit,
+    isDarkMode: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = title,
+            tint = if (isDarkMode) AccentBlue else MeteoBlue,
+            modifier = Modifier.size(24.dp)
+        )
+        
+        Spacer(modifier = Modifier.width(16.dp))
+        
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (isDarkMode) TextPrimaryDark else TextPrimaryLight
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@Composable
+fun WeatherContent(
+    weather: com.example.silassaq.data.WeatherResponse,
+    useGreenlandicFormat: Boolean = false,
+    translateCondition: (String) -> String = { it },
+    onMenuClick: () -> Unit,
+    onLocationSelected: (String) -> Unit = {},
+    isDarkMode: Boolean
+) {
+    // State for showing favorite cities popup
+    var showFavoriteCities by remember { mutableStateOf(false) }
+    
+    // State for showing search popup
+    var showSearch by remember { mutableStateOf(false) }
+    
+    // State for search text
+    var searchText by remember { mutableStateOf("") }
+    
+    // State for selected favorite city (initially set to current weather location)
+    var selectedFavoriteCity by remember { mutableStateOf(weather.location.name) }
+    
+    // State for pagination dots
+    var selectedDot by remember { mutableStateOf(0) }
+    
+    // State for favorite cities (empty by default)
+    var favoriteCities by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
+    
+    // Keyboard controller and focus manager
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    
+    // State for weather data pages
+    val weatherPages = remember {
+        listOf(
+            "Current Weather",
+            "Hourly Forecast",
+            "Daily Forecast"
+        )
+    }
+    
+    // Horizontal pager state
+    val pagerState = rememberPagerState(pageCount = { weatherPages.size })
+    
+    // Update selected dot when page changes
+    LaunchedEffect(pagerState.currentPage) {
+        selectedDot = pagerState.currentPage
+    }
+    
+    // Update page when dot is selected
+    LaunchedEffect(selectedDot) {
+        if (selectedDot != pagerState.currentPage) {
+            pagerState.animateScrollToPage(selectedDot)
+        }
+    }
+    
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Main content with dark background
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(if (isDarkMode) DarkNavyBackground else LightModeBackground)
+        ) {
+            // Top bar with location and search
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 48.dp, start = 16.dp, end = 16.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Location with icon
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { showFavoriteCities = true }
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.LocationOn,
+                        contentDescription = "Location",
+                        tint = if (isDarkMode) AccentYellow else AccentOrange,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    
+                    Spacer(modifier = Modifier.width(8.dp))
+                    
+                    Text(
+                        text = selectedFavoriteCity,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDarkMode) Color.White else TextPrimaryLight
+                    )
+                }
+                
+                // Search icon
+                IconButton(
+                    onClick = { showSearch = true },
+                    modifier = Modifier
+                        .size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = "Search",
+                        tint = if (isDarkMode) Color.White else TextPrimaryLight
+                    )
+                }
+            }
+            
+            // Weather content pager
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) { page ->
+                when (page) {
+                    0 -> CurrentWeatherPage(weather, useGreenlandicFormat, translateCondition, isDarkMode)
+                    1 -> HourlyForecastPage(weather, isDarkMode)
+                    2 -> DailyForecastPage(weather, isDarkMode)
+                }
+            }
+            
+            // Pagination dots
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                repeat(weatherPages.size) { index ->
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (index == selectedDot) {
+                                    if (isDarkMode) AccentBlue else MeteoBlue
+                                } else {
+                                    if (isDarkMode) Color.White.copy(alpha = 0.3f) else Color.Gray.copy(alpha = 0.3f)
+                                }
+                            )
+                            .clickable { selectedDot = index }
+                    )
+                }
+            }
+        }
+        
+        // Search screen using our component
+        SearchScreen(
+            visible = showSearch,
+            searchText = searchText,
+            onSearchTextChange = { searchText = it },
+            onSearch = { city ->
+                selectedFavoriteCity = city
+                onLocationSelected(city)
+                showSearch = false
+            },
+            onDismiss = { showSearch = false },
+            isDarkMode = isDarkMode
+        )
+        
+        // Favorite cities popup with animation
+        AnimatedVisibility(
+            visible = showFavoriteCities,
+            enter = fadeIn() + slideInVertically { -it },
+            exit = fadeOut() + slideOutVertically { -it }
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { 
+                        showFavoriteCities = false 
+                    },
+                contentAlignment = Alignment.TopCenter
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .padding(top = 16.dp)
+                        .clickable(enabled = false) { /* Prevent clicks from passing through */ },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) DarkNavyCardLight else Color.White
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        // Header with title and close button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Favorite cities",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkMode) Color.White else TextPrimaryLight
+                            )
+                            
+                            IconButton(
+                                onClick = { showFavoriteCities = false },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "Close",
+                                    tint = if (isDarkMode) Color.White else TextPrimaryLight
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Empty state or favorite cities list
+                        if (favoriteCities.isEmpty()) {
+                            // Empty state
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Favorite,
+                                    contentDescription = null,
+                                    tint = if (isDarkMode) Color.White.copy(alpha = 0.3f) else Color.Gray.copy(alpha = 0.3f),
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                
+                                Spacer(modifier = Modifier.height(16.dp))
+                                
+                                Text(
+                                    text = "No favorite cities yet",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (isDarkMode) Color.White else TextPrimaryLight
+                                )
+                                
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                Text(
+                                    text = "Add cities to your favorites to see them here",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (isDarkMode) Color.White.copy(alpha = 0.7f) else TextSecondaryLight,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else {
+                            // Favorite cities list
+                            favoriteCities.forEach { (location, temp) ->
+                                val locationName = location.split(",")[0]
+                                val regionName = location.split(",")[1]
+                                val isSelected = locationName == selectedFavoriteCity
+                                
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { 
+                                            selectedFavoriteCity = locationName
+                                            showFavoriteCities = false
+                                            // Update the weather data for the selected location
+                                            onLocationSelected(locationName)
+                                        }
+                                        .background(
+                                            if (isSelected) {
+                                                if (isDarkMode) Color.White.copy(alpha = 0.1f) else Color.Gray.copy(alpha = 0.1f)
+                                            } else {
+                                                Color.Transparent
+                                            },
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Star icon
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_star),
+                                        contentDescription = null,
+                                        tint = AccentYellow,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    
+                                    // Location info
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(horizontal = 12.dp)
+                                    ) {
+                                        Text(
+                                            text = locationName,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                            color = if (isDarkMode) Color.White else TextPrimaryLight
+                                        )
+                                        
+                                        Text(
+                                            text = regionName,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = if (isDarkMode) TextSecondaryDark else TextSecondaryLight
+                                        )
+                                    }
+                                    
+                                    // Weather icon
+                                    Box(
+                                        modifier = Modifier.size(28.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        val iconRes = when (locationName) {
+                                            "New York" -> R.drawable.ic_weather_sunny
+                                            "California" -> R.drawable.ic_weather_sunny
+                                            "London" -> R.drawable.ic_weather_partly_cloudy
+                                            "Paris" -> R.drawable.ic_weather_partly_cloudy
+                                            else -> R.drawable.ic_weather_cloudy
+                                        }
+                                        
+                                        Image(
+                                            painter = painterResource(id = iconRes),
+                                            contentDescription = "Weather",
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                    }
+                                    
+                                    // Temperature
+                                    Text(
+                                        text = temp,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDarkMode) Color.White else TextPrimaryLight
+                                    )
+                                }
+                                
+                                // Add divider between items
+                                if (favoriteCities.indexOf(location to temp) < favoriteCities.size - 1) {
+                                    HorizontalDivider(
+                                        color = if (isDarkMode) Color.White.copy(alpha = 0.1f) else Color.Gray.copy(alpha = 0.1f),
+                                        thickness = 1.dp
+                                    )
+                                }
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Add a city button
+                        Button(
+                            onClick = { 
+                                showFavoriteCities = false
+                                showSearch = true
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isDarkMode) AccentBlue else MeteoBlue
+                            )
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Add,
+                                    contentDescription = "Add a city",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Add a city")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun WeatherConditionRow(
+    source: String,
+    condition: String,
+    wind: String,
+    isDarkMode: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isDarkMode) DarkNavyCardLight else LightModeCard)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Source name
+        Text(
+            text = source,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (isDarkMode) Color.White else TextPrimaryLight
+        )
+        
+        // Weather icon
+        Image(
+            painter = painterResource(
+                id = when (condition) {
+                    "Sunny" -> R.drawable.ic_weather_sunny
+                    "Partly Cloudy" -> R.drawable.ic_weather_partly_cloudy
+                    else -> R.drawable.ic_weather_cloudy
+                }
+            ),
+            contentDescription = condition,
+            modifier = Modifier.size(24.dp)
+        )
+        
+        // Wind speed
+        Text(
+            text = wind,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (isDarkMode) Color.White.copy(alpha = 0.7f) else TextSecondaryLight
+        )
+    }
+}
+
+@Composable
+fun LoadingScreen(isDarkMode: Boolean) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (isDarkMode) DarkNavyBackground else LightModeBackground),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            CircularProgressIndicator(
+                color = if (isDarkMode) AccentBlue else MeteoBlue,
+                modifier = Modifier.size(60.dp)
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Text(
+                text = "Loading weather data...",
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (isDarkMode) Color.White else TextPrimaryLight
+            )
+        }
+    }
+}
+
+@Composable
+fun ErrorScreen(
+    message: String,
+    onRetry: () -> Unit,
+    isDarkMode: Boolean
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (isDarkMode) DarkNavyBackground else LightModeBackground),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Info,
+                contentDescription = "Error",
+                tint = if (isDarkMode) AccentBlue else MeteoBlue,
+                modifier = Modifier.size(60.dp)
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Text(
+                text = "Error",
+                style = MaterialTheme.typography.headlineMedium,
+                color = if (isDarkMode) Color.White else TextPrimaryLight
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+                color = if (isDarkMode) Color.White.copy(alpha = 0.7f) else TextSecondaryLight
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            Button(
+                onClick = onRetry,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isDarkMode) AccentBlue else MeteoBlue
+                )
+            ) {
+                Text("Retry")
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun WeatherAppPreview() {
+    SilassaqTheme {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = DarkNavyBackground
+        ) {
+            // Preview can't use the actual ViewModel, so we just show the UI structure
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = "Weather App",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(bottom = 16.dp),
+                    color = Color.White
+                )
+                
+                Text(
+                    text = "Preview mode - no actual weather data",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.White.copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CurrentWeatherPage(
+    weather: com.example.silassaq.data.WeatherResponse,
+    useGreenlandicFormat: Boolean,
+    translateCondition: (String) -> String,
+    isDarkMode: Boolean
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+    ) {
+        // Today's average
+        Text(
+            text = "Today's average",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (isDarkMode) Color.White.copy(alpha = 0.7f) else TextSecondaryLight,
+            modifier = Modifier.padding(start = 8.dp, top = 16.dp)
+        )
+        
+        // Current temperature - large display
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Temperature
+            Row(verticalAlignment = Alignment.Top) {
+                Text(
+                    text = "${weather.current.temp_c.toInt()}",
+                    style = MaterialTheme.typography.displayLarge.copy(
+                        fontSize = 80.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = if (isDarkMode) AccentBlue else MeteoBlue
+                )
+                
+                Text(
+                    text = "°C",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDarkMode) AccentBlue else MeteoBlue,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            
+            // Weather icon
+            Image(
+                painter = painterResource(
+                    id = when {
+                        weather.current.condition.text.contains("sunny", ignoreCase = true) -> R.drawable.ic_weather_sunny
+                        weather.current.condition.text.contains("cloud", ignoreCase = true) && 
+                        weather.current.condition.text.contains("part", ignoreCase = true) -> R.drawable.ic_weather_partly_cloudy
+                        else -> R.drawable.ic_weather_cloudy
+                    }
+                ),
+                contentDescription = weather.current.condition.text,
+                modifier = Modifier.size(80.dp)
+            )
+        }
+        
+        // Weather condition pill
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 8.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(if (isDarkMode) AccentBlue.copy(alpha = 0.1f) else MeteoBlue.copy(alpha = 0.1f))
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (useGreenlandicFormat) {
+                    translateCondition(weather.current.condition.text)
+                } else {
+                    weather.current.condition.text
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isDarkMode) AccentBlue else MeteoBlue
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // Weather details grid
+        Text(
+            text = "Weather Details",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (isDarkMode) Color.White else TextPrimaryLight,
+            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
+        )
+        
+        // Details grid
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Feels like
+                WeatherDetailItem(
+                    icon = R.drawable.ic_weather_partly_cloudy,
+                    title = "Feels Like",
+                    value = "${weather.current.feelslike_c.toInt()}°C",
+                    isDarkMode = isDarkMode,
+                    modifier = Modifier.weight(1f)
+                )
+                
+                // Humidity
+                WeatherDetailItem(
+                    icon = R.drawable.ic_weather_cloudy,
+                    title = "Humidity",
+                    value = "${weather.current.humidity}%",
+                    isDarkMode = isDarkMode,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Wind
+                WeatherDetailItem(
+                    icon = R.drawable.ic_weather_sunny,
+                    title = "Wind",
+                    value = "${weather.current.wind_kph} km/h",
+                    isDarkMode = isDarkMode,
+                    modifier = Modifier.weight(1f)
+                )
+                
+                // Pressure
+                WeatherDetailItem(
+                    icon = R.drawable.ic_weather_cloudy,
+                    title = "Pressure",
+                    value = "1013 hPa",
+                    isDarkMode = isDarkMode,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // Weather providers
+        Text(
+            text = "Weather Providers",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (isDarkMode) Color.White else TextPrimaryLight,
+            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
+        )
+        
+        // Weather condition rows
+        val conditions = listOf(
+            Triple("Bright Sky", "Sunny", "4.9 km/s"),
+            Triple("Open Metro", "Partly Cloudy", "3.1 km/s"),
+            Triple("OpenWeather", "Cloudy", "2.7 km/s"),
+            Triple("Tomorrow.io", "Cloudy", "3.0 km/s"),
+            Triple("Weather(AI)", "Cloudy", "3.4 km/s"),
+            Triple("AccuWeather", "Partly Cloudy", "4.1 km/s")
+        )
+        
+        conditions.forEach { (source, condition, wind) ->
+            WeatherConditionRow(
+                source = source,
+                condition = condition,
+                wind = wind,
+                isDarkMode = isDarkMode
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        
+        // Add extra space at the bottom
+        Spacer(modifier = Modifier.height(80.dp))
+    }
+}
+
+@Composable
+fun HourlyForecastPage(
+    weather: com.example.silassaq.data.WeatherResponse,
+    isDarkMode: Boolean
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+    ) {
+        // Header
+        Text(
+            text = "Hourly Forecast",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (isDarkMode) Color.White else TextPrimaryLight,
+            modifier = Modifier.padding(start = 8.dp, top = 16.dp, bottom = 16.dp)
+        )
+        
+        // Generate hourly forecast data (since the API might not provide it)
+        val currentHour = LocalDateTime.now().hour
+        val hourlyForecasts = List(24) { index ->
+            val hour = (currentHour + index) % 24
+            val temp = weather.current.temp_c.toInt() + (-2..2).random()
+            val condition = when {
+                hour in 6..18 -> "Sunny" // Daytime
+                else -> "Partly Cloudy" // Nighttime
+            }
+            Triple(hour, temp, condition)
+        }
+        
+        // Hourly forecast cards
+        hourlyForecasts.forEach { (hour, temp, condition) ->
+            HourlyForecastItem(
+                hour = hour,
+                temperature = temp,
+                condition = condition,
+                isDarkMode = isDarkMode
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        
+        // Add extra space at the bottom
+        Spacer(modifier = Modifier.height(80.dp))
+    }
+}
+
+@Composable
+fun DailyForecastPage(
+    weather: com.example.silassaq.data.WeatherResponse,
+    isDarkMode: Boolean
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+    ) {
+        // Header
+        Text(
+            text = "7-Day Forecast",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (isDarkMode) Color.White else TextPrimaryLight,
+            modifier = Modifier.padding(start = 8.dp, top = 16.dp, bottom = 16.dp)
+        )
+        
+        // Generate daily forecast data (since the API might not provide it)
+        val today = LocalDate.now()
+        val dailyForecasts = List(7) { index ->
+            val date = today.plusDays(index.toLong())
+            val highTemp = weather.current.temp_c.toInt() + (-3..5).random()
+            val lowTemp = highTemp - (5..10).random()
+            val condition = when (index % 3) {
+                0 -> "Sunny"
+                1 -> "Partly Cloudy"
+                else -> "Cloudy"
+            }
+            DailyForecast(date, highTemp, lowTemp, condition)
+        }
+        
+        // Daily forecast cards
+        dailyForecasts.forEach { forecast ->
+            DailyForecastItem(
+                forecast = forecast,
+                isDarkMode = isDarkMode
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        
+        // Add extra space at the bottom
+        Spacer(modifier = Modifier.height(80.dp))
+    }
+}
+
+@Composable
+fun WeatherDetailItem(
+    icon: Int,
+    title: String,
+    value: String,
+    isDarkMode: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isDarkMode) DarkNavyCardLight else LightModeCard)
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Image(
+            painter = painterResource(id = icon),
+            contentDescription = title,
+            modifier = Modifier.size(32.dp)
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (isDarkMode) Color.White else TextPrimaryLight
+        )
+        
+        Spacer(modifier = Modifier.height(4.dp))
+        
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (isDarkMode) Color.White.copy(alpha = 0.7f) else TextSecondaryLight
+        )
+    }
+}
+
+@Composable
+fun HourlyForecastItem(
+    hour: Int,
+    temperature: Int,
+    condition: String,
+    isDarkMode: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isDarkMode) DarkNavyCardLight else LightModeCard)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Time
+        Text(
+            text = if (hour == LocalDateTime.now().hour) "Now" else "${hour}:00",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (hour == LocalDateTime.now().hour) FontWeight.Bold else FontWeight.Normal,
+            color = if (isDarkMode) Color.White else TextPrimaryLight
+        )
+        
+        // Weather icon
+        Image(
+            painter = painterResource(
+                id = when (condition) {
+                    "Sunny" -> R.drawable.ic_weather_sunny
+                    "Partly Cloudy" -> R.drawable.ic_weather_partly_cloudy
+                    else -> R.drawable.ic_weather_cloudy
+                }
+            ),
+            contentDescription = condition,
+            modifier = Modifier.size(24.dp)
+        )
+        
+        // Temperature
+        Text(
+            text = "${temperature}°C",
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Bold,
+            color = if (isDarkMode) Color.White else TextPrimaryLight
+        )
+    }
+}
+
+data class DailyForecast(
+    val date: LocalDate,
+    val highTemp: Int,
+    val lowTemp: Int,
+    val condition: String
+)
+
+@Composable
+fun DailyForecastItem(
+    forecast: DailyForecast,
+    isDarkMode: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isDarkMode) DarkNavyCardLight else LightModeCard)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Day
+        val dayText = if (forecast.date.isEqual(LocalDate.now())) {
+            "Today"
+        } else if (forecast.date.isEqual(LocalDate.now().plusDays(1))) {
+            "Tomorrow"
+        } else {
+            forecast.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
+        }
+        
+        Text(
+            text = dayText,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (forecast.date.isEqual(LocalDate.now())) FontWeight.Bold else FontWeight.Normal,
+            color = if (isDarkMode) Color.White else TextPrimaryLight,
+            modifier = Modifier.width(100.dp)
+        )
+        
+        // Weather icon
+        Image(
+            painter = painterResource(
+                id = when (forecast.condition) {
+                    "Sunny" -> R.drawable.ic_weather_sunny
+                    "Partly Cloudy" -> R.drawable.ic_weather_partly_cloudy
+                    else -> R.drawable.ic_weather_cloudy
+                }
+            ),
+            contentDescription = forecast.condition,
+            modifier = Modifier.size(24.dp)
+        )
+        
+        // Temperature range
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Low temp
+            Text(
+                text = "${forecast.lowTemp}°",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isDarkMode) Color.White.copy(alpha = 0.7f) else TextSecondaryLight
+            )
+            
+            // Temperature bar
+            Box(
+                modifier = Modifier
+                    .width(60.dp)
+                    .height(4.dp)
+                    .padding(horizontal = 8.dp)
+                    .background(
+                        if (isDarkMode) Color.White.copy(alpha = 0.2f) else Color.Gray.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(2.dp)
+                    )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(40.dp)
+                        .background(
+                            if (isDarkMode) AccentBlue else MeteoBlue,
+                            shape = RoundedCornerShape(2.dp)
+                        )
+                }
+            }
+            
+            // High temp
+            Text(
+                text = "${forecast.highTemp}°",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (isDarkMode) Color.White else TextPrimaryLight
+            )
+        }
+    }
+}
