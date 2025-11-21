@@ -1,7 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">api.openweathermap.org</domain>
-        <domain includeSubdomains="true">openweathermap.org</domain>
+    <!-- Allow secure connections to weather APIs -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Met Norway API (HTTPS) -->
+    <domain-config>
+        <domain includeSubdomains="true">api.met.no</domain>
+    </domain-config>
+
+    <!-- WeatherAPI.com (HTTPS) -->
+    <domain-config>
+        <domain includeSubdomains="true">api.weatherapi.com</domain>
+        <domain includeSubdomains="true">weatherapi.com</domain>
     </domain-config>
 </network-security-config> 
