@@ -123,33 +123,13 @@ fun WeatherApp(viewModel: WeatherViewModel) {
                 
                 // API Source Dialog
                 if (showApiSourceDialog) {
-                    AlertDialog(
-                        onDismissRequest = { showApiSourceDialog = false },
-                        title = { Text("Select Weather Data Source") },
-                        text = { 
-                            Column {
-                                Text("Choose which weather API to use as the primary data source.")
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text("Current source: ${if (viewModel.useMetNorway) "Met Norway" else "WeatherAPI.com"}")
-                            }
+                    ApiSourceDialog(
+                        useMetNorway = viewModel.useMetNorway,
+                        onConfirm = {
+                            viewModel.toggleApiSource()
+                            showApiSourceDialog = false
                         },
-                        confirmButton = {
-                            Button(
-                                onClick = {
-                                    viewModel.toggleApiSource()
-                                    showApiSourceDialog = false
-                                }
-                            ) {
-                                Text("Switch to ${if (viewModel.useMetNorway) "WeatherAPI.com" else "Met Norway"}")
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(
-                                onClick = { showApiSourceDialog = false }
-                            ) {
-                                Text("Cancel")
-                            }
-                        }
+                        onDismiss = { showApiSourceDialog = false }
                     )
                 }
                 
@@ -225,14 +205,9 @@ fun WeatherApp(viewModel: WeatherViewModel) {
             }
         }
         is WeatherViewModel.WeatherState.Error -> {
-            val errorMessage = (weatherState as WeatherViewModel.WeatherState.Error).message
             ErrorScreen(
-                message = errorMessage,
-                onRetry = {
-                    coroutineScope.launch {
-                        viewModel.refreshWeather()
-                    }
-                }
+                message = weatherState.message,
+                onRetry = { viewModel.refreshWeather() }
             )
         }
     }
@@ -259,9 +234,9 @@ fun OfflineBanner(dataAge: Int?) {
                 tint = Color.White,
                 modifier = Modifier.size(16.dp)
             )
-            
+
             Spacer(modifier = Modifier.width(8.dp))
-            
+
             Text(
                 text = if (dataAge != null) {
                     "Offline mode - Showing data from $dataAge ${if (dataAge == 1) "minute" else "minutes"} ago"
@@ -275,4 +250,33 @@ fun OfflineBanner(dataAge: Int?) {
             )
         }
     }
+}
+
+@Composable
+fun ApiSourceDialog(
+    useMetNorway: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Weather Data Source") },
+        text = {
+            Column {
+                Text("Choose which weather API to use as the primary data source.")
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Current source: ${if (useMetNorway) "Met Norway" else "WeatherAPI.com"}")
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text("Switch to ${if (useMetNorway) "WeatherAPI.com" else "Met Norway"}")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
