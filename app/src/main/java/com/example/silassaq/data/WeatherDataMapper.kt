@@ -11,10 +11,13 @@ import kotlin.math.roundToInt
  * Utility class to map between different weather data formats
  */
 object WeatherDataMapper {
-    
+
+    private const val MS_TO_KMH = 3.6
+    private const val PRECIPITATION_THRESHOLD_MM = 0.1
+
     /**
      * Map Met Norway API response to the app's WeatherResponse format
-     * 
+     *
      * @param metNoResponse The response from Met Norway API
      * @param locationData Location information
      * @return Converted WeatherResponse object
@@ -23,31 +26,23 @@ object WeatherDataMapper {
         metNoResponse: MetNoWeatherResponse,
         locationData: MetNoWeatherService.LocationData
     ): WeatherResponse {
-        // Extract current weather from first timeseries
         val currentTimeseries = metNoResponse.properties.timeseries.firstOrNull()
             ?: throw IllegalStateException("No timeseries data available")
-        
+
         val details = currentTimeseries.data.instant.details
-        val next1Hour = currentTimeseries.data.next_1_hours
-        val next6Hours = currentTimeseries.data.next_6_hours
-        
-        // Create location object
+        val symbolCode = currentTimeseries.data.next_1_hours?.summary?.symbol_code
+
         val location = Location(
             name = locationData.name,
             region = locationData.region,
             country = "Greenland",
             localtime = currentTimeseries.time
         )
-        
-        // Create current weather object
+
         val current = CurrentWeather(
             temp_c = details.air_temperature?.toFloat() ?: 0f,
-            condition = Condition(
-                text = getWeatherConditionText(next1Hour?.summary?.symbol_code),
-                icon = getWeatherIconUrl(next1Hour?.summary?.symbol_code),
-                code = getWeatherConditionCode(next1Hour?.summary?.symbol_code)
-            ),
-            wind_kph = (details.wind_speed?.times(3.6))?.toFloat() ?: 0f, // Convert m/s to km/h
+            condition = createCondition(symbolCode),
+            wind_kph = (details.wind_speed?.times(MS_TO_KMH))?.toFloat() ?: 0f,
             wind_dir = getWindDirection(details.wind_from_direction),
             humidity = details.relative_humidity?.toInt() ?: 0,
             feelslike_c = calculateFeelsLikeTemperature(
@@ -58,12 +53,20 @@ object WeatherDataMapper {
             uv = 0f, // Met Norway doesn't provide UV index
             last_updated = currentTimeseries.time
         )
-        
-        // Create forecast object
+
         val forecastDays = createForecastDays(metNoResponse.properties.timeseries)
-        val forecast = Forecast(forecastDays)
-        
-        return WeatherResponse(current, location, forecast)
+        return WeatherResponse(current, location, Forecast(forecastDays))
+    }
+
+    /**
+     * Create a Condition object from symbol code
+     */
+    private fun createCondition(symbolCode: String?): Condition {
+        return Condition(
+            text = getWeatherConditionText(symbolCode),
+            icon = getWeatherIconUrl(symbolCode),
+            code = getWeatherConditionCode(symbolCode)
+        )
     }
     
     /**
@@ -94,28 +97,16 @@ object WeatherDataMapper {
             val condition = noonTimeseries?.let {
                 val symbolCode = it.data.next_6_hours?.summary?.symbol_code
                     ?: it.data.next_1_hours?.summary?.symbol_code
-                
-                Condition(
-                    text = getWeatherConditionText(symbolCode),
-                    icon = getWeatherIconUrl(symbolCode),
-                    code = getWeatherConditionCode(symbolCode)
-                )
+                createCondition(symbolCode)
             } ?: Condition("Unknown", "", 0)
-            
+
             // Create hourly forecast
-            val hourlyForecasts = dayTimeseries.map { timeseries ->
-                val hourDetails = timeseries.data.instant.details
-                val hourNext1Hour = timeseries.data.next_1_hours
-                
+            val hourlyForecasts = dayTimeseries.map { ts ->
                 Hour(
-                    time = timeseries.time,
-                    temp_c = hourDetails.air_temperature?.toFloat() ?: 0f,
-                    condition = Condition(
-                        text = getWeatherConditionText(hourNext1Hour?.summary?.symbol_code),
-                        icon = getWeatherIconUrl(hourNext1Hour?.summary?.symbol_code),
-                        code = getWeatherConditionCode(hourNext1Hour?.summary?.symbol_code)
-                    ),
-                    chance_of_rain = calculatePrecipitationChance(listOf(timeseries))
+                    time = ts.time,
+                    temp_c = ts.data.instant.details.air_temperature?.toFloat() ?: 0f,
+                    condition = createCondition(ts.data.next_1_hours?.summary?.symbol_code),
+                    chance_of_rain = calculatePrecipitationChance(listOf(ts))
                 )
             }
             
@@ -148,40 +139,26 @@ object WeatherDataMapper {
      * Calculate chance of precipitation based on timeseries data
      */
     private fun calculatePrecipitationChance(timeseries: List<Timeseries>): Int {
-        // Count how many hours have precipitation
-        val hoursWithPrecipitation = timeseries.count { 
+        if (timeseries.isEmpty()) return 0
+
+        val hoursWithPrecipitation = timeseries.count {
             val amount = it.data.next_1_hours?.details?.precipitation_amount
                 ?: it.data.next_6_hours?.details?.precipitation_amount
                 ?: 0.0
-            
-            amount > 0.1 // More than 0.1mm is considered precipitation
+            amount > PRECIPITATION_THRESHOLD_MM
         }
-        
-        // Calculate percentage
-        return if (timeseries.isNotEmpty()) {
-            ((hoursWithPrecipitation.toDouble() / timeseries.size) * 100).roundToInt()
-        } else {
-            0
-        }
+
+        return ((hoursWithPrecipitation.toDouble() / timeseries.size) * 100).roundToInt()
     }
     
     /**
      * Get wind direction as a string based on degrees
      */
     private fun getWindDirection(degrees: Double?): String {
-        if (degrees == null) return "N"
-        
-        return when (((degrees + 22.5) % 360 / 45).toInt()) {
-            0 -> "N"
-            1 -> "NE"
-            2 -> "E"
-            3 -> "SE"
-            4 -> "S"
-            5 -> "SW"
-            6 -> "W"
-            7 -> "NW"
-            else -> "N"
-        }
+        degrees ?: return "N"
+        val directions = arrayOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+        val index = (((degrees + 22.5) % 360) / 45).toInt()
+        return directions.getOrElse(index) { "N" }
     }
     
     /**

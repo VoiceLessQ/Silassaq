@@ -1,0 +1,15 @@
+package com.example.silassaq.data
+
+/**
+ * API Keys Configuration Template
+ *
+ * To use this app:
+ * 1. Copy this file to ApiKeys.kt (in the same directory)
+ * 2. Replace "your_weatherapi_key_here" with your actual WeatherAPI.com key
+ * 3. Get your free API key from https://www.weatherapi.com/signup.aspx
+ *
+ * Note: ApiKeys.kt is gitignored to keep your API key secure
+ */
+object ApiKeys {
+    const val WEATHER_API_KEY = "your_weatherapi_key_here"
+}

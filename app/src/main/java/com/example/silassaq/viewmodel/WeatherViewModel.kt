@@ -56,110 +56,121 @@ class WeatherViewModel : ViewModel() {
     fun fetchWeather(location: String = selectedLocation, forceRefresh: Boolean = false) {
         viewModelScope.launch {
             weatherState = WeatherState.Loading
-            
-            // Check cache first if not forcing refresh
-            if (!forceRefresh) {
-                val locationData = MetNoWeatherService.greenlandLocations[location]
-                if (locationData != null) {
-                    val cachedData = WeatherDataCache.getCachedWeather(locationData.geonamesId)
-                    if (cachedData != null) {
-                        weatherState = WeatherState.Success(cachedData)
-                        selectedLocation = location
-                        _isOfflineMode.value = true
-                        return@launch
-                    }
-                }
+
+            // Try to load cached data first if not forcing refresh
+            if (!forceRefresh && tryLoadCachedData(location)) {
+                return@launch
             }
-            
+
             try {
-                // Add a small delay to ensure the loading state is visible
+                // Add delay to make loading state visible when forcing refresh
                 if (forceRefresh) {
-                    delay(500) // Increased delay to make loading state more visible
+                    delay(500)
                 }
-                
-                var response: WeatherResponse? = null
-                var error: Exception? = null
-                
-                // Try the selected API first
-                try {
-                    response = if (useMetNorway) {
-                        // Use Met Norway API with retry mechanism
-                        val locationData = MetNoWeatherService.greenlandLocations[location]
-                            ?: throw IllegalArgumentException("Unknown location: $location")
-                        
-                        val metNoResponse = fetchMetNoWeatherWithRetry(location)
-                        WeatherDataMapper.mapMetNoToAppFormat(metNoResponse, locationData)
-                    } else {
-                        // Use WeatherAPI.com
-                        WeatherService.getGreenlandWeather(location)
-                    }
-                    
-                    // Cache the successful response
-                    val locationData = MetNoWeatherService.greenlandLocations[location]
-                    if (locationData != null) {
-                        WeatherDataCache.cacheWeatherData(locationData.geonamesId, response)
-                    }
-                    
-                    _isOfflineMode.value = false
-                } catch (e: Exception) {
-                    error = e
-                    
-                    // If the selected API fails, try the other one as fallback
-                    try {
-                        response = if (!useMetNorway) {
-                            // Fallback to Met Norway API with retry mechanism
-                            val locationData = MetNoWeatherService.greenlandLocations[location]
-                                ?: throw IllegalArgumentException("Unknown location: $location")
-                            
-                            val metNoResponse = fetchMetNoWeatherWithRetry(location)
-                            WeatherDataMapper.mapMetNoToAppFormat(metNoResponse, locationData)
-                        } else {
-                            // Fallback to WeatherAPI.com
-                            WeatherService.getGreenlandWeather(location)
-                        }
-                        
-                        // Cache the successful response
-                        val locationData = MetNoWeatherService.greenlandLocations[location]
-                        if (locationData != null) {
-                            WeatherDataCache.cacheWeatherData(locationData.geonamesId, response)
-                        }
-                        
-                        _isOfflineMode.value = false
-                    } catch (fallbackError: Exception) {
-                        // Both APIs failed, check if we have cached data
-                        val locationData = MetNoWeatherService.greenlandLocations[location]
-                        if (locationData != null) {
-                            val cachedData = WeatherDataCache.getCachedWeather(locationData.geonamesId)
-                            if (cachedData != null) {
-                                response = cachedData
-                                _isOfflineMode.value = true
-                            } else {
-                                // No cached data available, throw the original error
-                                throw error
-                            }
-                        } else {
-                            // Unknown location, throw the original error
-                            throw error
-                        }
-                    }
-                }
-                
+
+                // Fetch fresh data from APIs with fallback
+                val response = fetchWeatherFromApis(location)
+
                 if (response != null) {
-                    // Update the last updated time
-                    lastUpdated = LocalDateTime.now().format(
-                        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-                    )
-                    
-                    weatherState = WeatherState.Success(response)
-                    selectedLocation = location
+                    cacheWeatherData(location, response)
+                    updateWeatherState(response, location, isOffline = false)
                 } else {
-                    // This should not happen, but just in case
-                    throw IllegalStateException("Failed to get weather data")
+                    // Both APIs failed, try cached data as last resort
+                    if (!tryLoadCachedData(location)) {
+                        throw IllegalStateException("Failed to get weather data from all sources")
+                    }
                 }
             } catch (e: Exception) {
-                handleWeatherError(e)
+                handleWeatherError(e, location)
             }
         }
+    }
+
+    /**
+     * Try to load cached weather data
+     * @return true if cached data was loaded, false otherwise
+     */
+    private fun tryLoadCachedData(location: String): Boolean {
+        val locationData = MetNoWeatherService.greenlandLocations[location]
+        if (locationData != null) {
+            val cachedData = WeatherDataCache.getCachedWeather(locationData.geonamesId)
+            if (cachedData != null) {
+                updateWeatherState(cachedData, location, isOffline = true)
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * Fetch weather from primary and fallback APIs
+     * @return WeatherResponse if successful, null if both APIs fail
+     */
+    private suspend fun fetchWeatherFromApis(location: String): WeatherResponse? {
+        return try {
+            fetchFromPrimaryApi(location)
+        } catch (e: Exception) {
+            try {
+                fetchFromFallbackApi(location)
+            } catch (fallbackError: Exception) {
+                null
+            }
+        }
+    }
+
+    /**
+     * Fetch from the currently selected primary API
+     */
+    private suspend fun fetchFromPrimaryApi(location: String): WeatherResponse {
+        return if (useMetNorway) {
+            fetchFromMetNorway(location)
+        } else {
+            WeatherService.getGreenlandWeather(location)
+        }
+    }
+
+    /**
+     * Fetch from the fallback API (opposite of primary)
+     */
+    private suspend fun fetchFromFallbackApi(location: String): WeatherResponse {
+        return if (!useMetNorway) {
+            fetchFromMetNorway(location)
+        } else {
+            WeatherService.getGreenlandWeather(location)
+        }
+    }
+
+    /**
+     * Fetch weather data from Met Norway API
+     */
+    private suspend fun fetchFromMetNorway(location: String): WeatherResponse {
+        val locationData = MetNoWeatherService.greenlandLocations[location]
+            ?: throw IllegalArgumentException("Unknown location: $location")
+
+        val metNoResponse = fetchMetNoWeatherWithRetry(location)
+        return WeatherDataMapper.mapMetNoToAppFormat(metNoResponse, locationData)
+    }
+
+    /**
+     * Cache weather data for offline use
+     */
+    private fun cacheWeatherData(location: String, response: WeatherResponse) {
+        val locationData = MetNoWeatherService.greenlandLocations[location]
+        if (locationData != null) {
+            WeatherDataCache.cacheWeatherData(locationData.geonamesId, response)
+        }
+    }
+
+    /**
+     * Update weather state with new data
+     */
+    private fun updateWeatherState(response: WeatherResponse, location: String, isOffline: Boolean) {
+        lastUpdated = LocalDateTime.now().format(
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+        )
+        weatherState = WeatherState.Success(response)
+        selectedLocation = location
+        _isOfflineMode.value = isOffline
     }
     
     /**
@@ -195,88 +206,24 @@ class WeatherViewModel : ViewModel() {
         }
     }
     
-    // Helper function to translate weather conditions
+    /**
+     * Translate weather conditions based on current language
+     */
     fun translateWeatherCondition(condition: String): String {
         return when (languageCode) {
-            "kl" -> translateToKalaallisut(condition)
-            "da" -> translateToDanish(condition)
-            else -> condition // Default to English
-        }
-    }
-    
-    private fun translateToKalaallisut(condition: String): String {
-        return when (condition.lowercase()) {
-            "snowy", "snow", "light snow" -> "Quliartorluni"
-            "partly cloudy", "cloudy" -> "Qulisimalluni"
-            "clear", "clear sky", "sunny" -> "Seqinnarpoq"
-            "light snow", "snow shower" -> "Nittaalaq"
-            "rain", "light rain", "drizzle" -> "Masannartuliorneq"
-            "heavy rain" -> "Assut masannartuliorneq"
+            "kl" -> KALAALLISUT_CONDITIONS[condition.lowercase()] ?: condition
+            "da" -> DANISH_CONDITIONS[condition.lowercase()] ?: condition
             else -> condition
         }
     }
-    
-    private fun translateToDanish(condition: String): String {
-        return when (condition.lowercase()) {
-            "snowy", "snow", "light snow" -> "Sne"
-            "partly cloudy" -> "Delvist skyet"
-            "cloudy" -> "Skyet"
-            "clear", "clear sky", "sunny" -> "Solrigt"
-            "light snow", "snow shower" -> "Let sne"
-            "rain", "light rain" -> "Regn"
-            "drizzle" -> "Støvregn"
-            "heavy rain" -> "Kraftig regn"
-            else -> condition
-        }
-    }
-    
-    // Helper function to translate UI labels
+
+    /**
+     * Translate UI labels based on current language
+     */
     fun translateLabel(label: String): String {
         return when (languageCode) {
-            "kl" -> translateLabelToKalaallisut(label)
-            "da" -> translateLabelToDanish(label)
-            else -> label // Default to English
-        }
-    }
-    
-    private fun translateLabelToKalaallisut(label: String): String {
-        return when (label) {
-            "Weather Details" -> "Silap pissusaa pillugu paasissutissat"
-            "Feels Like" -> "Malugineqarpoq"
-            "Humidity" -> "Imermik akoqassuseq"
-            "Wind" -> "Anorlertussusia"
-            "Pressure" -> "Naqitsineq"
-            "UV Index" -> "UV uuttortaat"
-            "Forecast" -> "Silap nalunaarsuutaa"
-            "Today" -> "Ullumi"
-            "Condition" -> "Silap qanoq innera"
-            "Chance of Rain" -> "Siallersinnaanera"
-            "Low" -> "Appasippoq"
-            "Moderate" -> "Akunnattumik"
-            "High" -> "Qaffasippoq"
-            "Very High" -> "Qaffasissaqaaq"
-            "Extreme" -> "Qaffasissaqaarujussuaq"
-            else -> label
-        }
-    }
-    
-    private fun translateLabelToDanish(label: String): String {
-        return when (label) {
-            "Weather Details" -> "Vejrdetaljer"
-            "Feels Like" -> "Føles som"
-            "Humidity" -> "Luftfugtighed"
-            "Wind" -> "Vind"
-            "Pressure" -> "Tryk"
-            "UV Index" -> "UV-indeks"
-            "Forecast" -> "Vejrudsigt"
-            "Today" -> "I dag"
-            "Condition" -> "Tilstand"
-            "Chance of Rain" -> "Chance for regn"
-            "Low" -> "Lav"
-            "Moderate" -> "Moderat"
-            "High" -> "Høj"
-            "Very High" -> "Meget høj"
-            "Extreme" -> "Ekstrem"
+            "kl" -> KALAALLISUT_LABELS[label] ?: label
+            "da" -> DANISH_LABELS[label] ?: label
             else -> label
         }
     }
@@ -291,102 +238,152 @@ class WeatherViewModel : ViewModel() {
         initialDelayMs: Long = 1000
     ): MetNoWeatherResponse {
         var currentDelay = initialDelayMs
-        var attempt = 0
-        
-        while (attempt < maxRetries) {
+
+        repeat(maxRetries) { attempt ->
             try {
                 return MetNoWeatherService.getGreenlandWeather(location)
             } catch (e: HttpException) {
-                if (e.code() == 403) {
-                    // 403 Forbidden - likely due to rate limiting or User-Agent issues
-                    attempt++
-                    if (attempt < maxRetries) {
-                        // Log retry attempt
-                        println("Received 403 error, retrying in ${currentDelay}ms (attempt $attempt of $maxRetries)")
-                        // Exponential backoff
-                        delay(currentDelay)
-                        currentDelay *= 2
-                    } else {
-                        throw e
-                    }
+                if (e.code() == 403 && attempt < maxRetries - 1) {
+                    println("Received 403 error, retrying in ${currentDelay}ms (attempt ${attempt + 1} of $maxRetries)")
+                    delay(currentDelay)
+                    currentDelay *= 2
                 } else {
                     throw e
                 }
             }
         }
-        
+
         throw IllegalStateException("Failed to fetch weather data after $maxRetries retries")
     }
     
-    private fun handleWeatherError(e: Exception) {
+    /**
+     * Handle weather fetching errors with fallback to cache
+     */
+    private fun handleWeatherError(e: Exception, location: String) {
         when (e) {
-            is UnknownHostException -> {
-                // No internet connection, try to use cached data
-                val locationData = MetNoWeatherService.greenlandLocations[selectedLocation]
-                if (locationData != null) {
-                    val cachedData = WeatherDataCache.getCachedWeather(locationData.geonamesId)
-                    if (cachedData != null) {
-                        weatherState = WeatherState.Success(cachedData)
-                        _isOfflineMode.value = true
-                        return
-                    }
+            is CancellationException -> throw e
+            is UnknownHostException, is SocketTimeoutException -> {
+                if (tryLoadCachedData(location)) {
+                    return
                 }
-                
-                weatherState = WeatherState.Error("No internet connection. Please check your network settings and try again.")
-            }
-            is SocketTimeoutException -> {
-                // Connection timed out, try to use cached data
-                val locationData = MetNoWeatherService.greenlandLocations[selectedLocation]
-                if (locationData != null) {
-                    val cachedData = WeatherDataCache.getCachedWeather(locationData.geonamesId)
-                    if (cachedData != null) {
-                        weatherState = WeatherState.Success(cachedData)
-                        _isOfflineMode.value = true
-                        return
+                weatherState = WeatherState.Error(
+                    if (e is UnknownHostException) {
+                        "No internet connection. Please check your network settings and try again."
+                    } else {
+                        "Connection timed out. Please try again later."
                     }
-                }
-                
-                weatherState = WeatherState.Error("Connection timed out. Please try again later.")
+                )
             }
             is HttpException -> {
-                val errorMsg = when (e.code()) {
-                    401 -> "API key error. Please check your API key."
-                    403 -> "Server error (403). The API is refusing the request. This may be due to rate limiting or an invalid API key. Retries were attempted but failed."
-                    404 -> "Location not found. Please try a different location."
-                    429 -> "Too many requests. Please try again later."
-                    else -> "Server error (${e.code()}). Please try again later."
-                }
-                weatherState = WeatherState.Error(errorMsg)
-            }
-            is CancellationException -> {
-                // Don't handle cancellation exceptions
-                throw e
+                weatherState = WeatherState.Error(getHttpErrorMessage(e.code()))
             }
             else -> {
                 weatherState = WeatherState.Error("Error: ${e.message ?: "Unknown error occurred"}")
             }
         }
     }
+
+    /**
+     * Get user-friendly error message for HTTP error codes
+     */
+    private fun getHttpErrorMessage(code: Int): String {
+        return when (code) {
+            401 -> "API key error. Please check your API key."
+            403 -> "Server error (403). The API is refusing the request. This may be due to rate limiting or an invalid API key."
+            404 -> "Location not found. Please try a different location."
+            429 -> "Too many requests. Please try again later."
+            else -> "Server error ($code). Please try again later."
+        }
+    }
     
     /**
      * Check if we're in offline mode
      */
-    fun isOffline(): Boolean {
-        return _isOfflineMode.value
-    }
-    
+    fun isOffline(): Boolean = _isOfflineMode.value
+
     /**
      * Get the age of the current data in minutes
      */
     fun getDataAge(): Int? {
         val locationData = MetNoWeatherService.greenlandLocations[selectedLocation] ?: return null
         val cacheAge = WeatherDataCache.getCacheAge(locationData.geonamesId) ?: return null
-        return (cacheAge / 60000).toInt() // Convert milliseconds to minutes
+        return (cacheAge / 60000).toInt()
     }
-    
+
     sealed class WeatherState {
         object Loading : WeatherState()
         data class Success(val data: WeatherResponse) : WeatherState()
         data class Error(val message: String) : WeatherState()
+    }
+
+    companion object {
+        // Translation mappings for weather conditions
+        private val KALAALLISUT_CONDITIONS = mapOf(
+            "snowy" to "Quliartorluni",
+            "snow" to "Quliartorluni",
+            "light snow" to "Nittaalaq",
+            "partly cloudy" to "Qulisimalluni",
+            "cloudy" to "Qulisimalluni",
+            "clear" to "Seqinnarpoq",
+            "clear sky" to "Seqinnarpoq",
+            "sunny" to "Seqinnarpoq",
+            "snow shower" to "Nittaalaq",
+            "rain" to "Masannartuliorneq",
+            "light rain" to "Masannartuliorneq",
+            "drizzle" to "Masannartuliorneq",
+            "heavy rain" to "Assut masannartuliorneq"
+        )
+
+        private val DANISH_CONDITIONS = mapOf(
+            "snowy" to "Sne",
+            "snow" to "Sne",
+            "light snow" to "Let sne",
+            "partly cloudy" to "Delvist skyet",
+            "cloudy" to "Skyet",
+            "clear" to "Solrigt",
+            "clear sky" to "Solrigt",
+            "sunny" to "Solrigt",
+            "snow shower" to "Let sne",
+            "rain" to "Regn",
+            "light rain" to "Regn",
+            "drizzle" to "Støvregn",
+            "heavy rain" to "Kraftig regn"
+        )
+
+        private val KALAALLISUT_LABELS = mapOf(
+            "Weather Details" to "Silap pissusaa pillugu paasissutissat",
+            "Feels Like" to "Malugineqarpoq",
+            "Humidity" to "Imermik akoqassuseq",
+            "Wind" to "Anorlertussusia",
+            "Pressure" to "Naqitsineq",
+            "UV Index" to "UV uuttortaat",
+            "Forecast" to "Silap nalunaarsuutaa",
+            "Today" to "Ullumi",
+            "Condition" to "Silap qanoq innera",
+            "Chance of Rain" to "Siallersinnaanera",
+            "Low" to "Appasippoq",
+            "Moderate" to "Akunnattumik",
+            "High" to "Qaffasippoq",
+            "Very High" to "Qaffasissaqaaq",
+            "Extreme" to "Qaffasissaqaarujussuaq"
+        )
+
+        private val DANISH_LABELS = mapOf(
+            "Weather Details" to "Vejrdetaljer",
+            "Feels Like" to "Føles som",
+            "Humidity" to "Luftfugtighed",
+            "Wind" to "Vind",
+            "Pressure" to "Tryk",
+            "UV Index" to "UV-indeks",
+            "Forecast" to "Vejrudsigt",
+            "Today" to "I dag",
+            "Condition" to "Tilstand",
+            "Chance of Rain" to "Chance for regn",
+            "Low" to "Lav",
+            "Moderate" to "Moderat",
+            "High" to "Høj",
+            "Very High" to "Meget høj",
+            "Extreme" to "Ekstrem"
+        )
     }
 }
