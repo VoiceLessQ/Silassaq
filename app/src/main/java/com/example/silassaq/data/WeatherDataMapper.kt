@@ -1,6 +1,8 @@
 package com.example.silassaq.data
 
 import com.example.silassaq.network.MetNoWeatherService
+import com.example.silassaq.utils.SunriseSunsetCalculator
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -54,7 +56,11 @@ object WeatherDataMapper {
             last_updated = currentTimeseries.time
         )
 
-        val forecastDays = createForecastDays(metNoResponse.properties.timeseries)
+        val forecastDays = createForecastDays(
+            metNoResponse.properties.timeseries,
+            locationData.lat,
+            locationData.lon
+        )
         return WeatherResponse(current, location, Forecast(forecastDays))
     }
 
@@ -72,7 +78,11 @@ object WeatherDataMapper {
     /**
      * Create forecast days from timeseries data
      */
-    private fun createForecastDays(timeseries: List<Timeseries>): List<ForecastDay> {
+    private fun createForecastDays(
+        timeseries: List<Timeseries>,
+        latitude: Double,
+        longitude: Double
+    ): List<ForecastDay> {
         // Group timeseries by day
         val groupedByDay = timeseries.groupBy { 
             it.time.substring(0, 10) // Extract date part (YYYY-MM-DD)
@@ -119,11 +129,12 @@ object WeatherDataMapper {
                 daily_chance_of_rain = precipitationChance
             )
             
-            // Create astro object with sunrise/sunset info
-            // Note: Met Norway doesn't provide this directly, so we're using placeholder values
+            // Calculate real sunrise/sunset times for this location and date
+            val localDate = LocalDate.parse(date)
+            val sunTimes = SunriseSunsetCalculator.calculate(latitude, longitude, localDate)
             val astro = Astro(
-                sunrise = "06:00 AM", // Placeholder
-                sunset = "06:00 PM"   // Placeholder
+                sunrise = sunTimes.sunrise?.format(DateTimeFormatter.ofPattern("hh:mm a")) ?: "No sunrise",
+                sunset = sunTimes.sunset?.format(DateTimeFormatter.ofPattern("hh:mm a")) ?: "No sunset"
             )
             
             ForecastDay(

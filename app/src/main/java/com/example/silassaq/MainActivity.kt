@@ -3,6 +3,7 @@ package com.example.silassaq
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -13,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.CoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -26,8 +28,10 @@ import com.example.silassaq.network.MetNoWeatherService
 import com.example.silassaq.network.WeatherService
 import com.example.silassaq.ui.components.*
 import com.example.silassaq.ui.components.SafetyLevel
+import com.example.silassaq.ui.screens.SettingsScreen
 import com.example.silassaq.ui.theme.AccentOrange
 import com.example.silassaq.ui.theme.SilassaqTheme
+import com.example.silassaq.utils.SunriseSunsetCalculator
 import com.example.silassaq.viewmodel.WeatherViewModel
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -52,15 +56,76 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WeatherApp(viewModel: WeatherViewModel) {
     val weatherState = viewModel.weatherState
     val isOfflineMode by viewModel.isOfflineMode.collectAsState()
     val coroutineScope = rememberCoroutineScope()
-    
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+
     var showLocationSelector by remember { mutableStateOf(false) }
     var showApiSourceDialog by remember { mutableStateOf(false) }
-    
+    var showSettings by remember { mutableStateOf(false) }
+    var showMoreMenu by remember { mutableStateOf(false) }
+
+    if (showSettings) {
+        SettingsScreen(
+            viewModel = viewModel,
+            onNavigateBack = { showSettings = false }
+        )
+        return
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                NavigationDrawerContent(
+                    onSettingsClick = {
+                        coroutineScope.launch {
+                            drawerState.close()
+                            showSettings = true
+                        }
+                    },
+                    onCloseDrawer = {
+                        coroutineScope.launch { drawerState.close() }
+                    }
+                )
+            }
+        }
+    ) {
+        WeatherContent(
+            viewModel = viewModel,
+            weatherState = weatherState,
+            isOfflineMode = isOfflineMode,
+            drawerState = drawerState,
+            coroutineScope = coroutineScope,
+            showLocationSelector = showLocationSelector,
+            onShowLocationSelector = { showLocationSelector = it },
+            showApiSourceDialog = showApiSourceDialog,
+            onShowApiSourceDialog = { showApiSourceDialog = it },
+            showMoreMenu = showMoreMenu,
+            onShowMoreMenu = { showMoreMenu = it }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WeatherContent(
+    viewModel: WeatherViewModel,
+    weatherState: WeatherViewModel.WeatherState,
+    isOfflineMode: Boolean,
+    drawerState: DrawerState,
+    coroutineScope: CoroutineScope,
+    showLocationSelector: Boolean,
+    onShowLocationSelector: (Boolean) -> Unit,
+    showApiSourceDialog: Boolean,
+    onShowApiSourceDialog: (Boolean) -> Unit,
+    showMoreMenu: Boolean,
+    onShowMoreMenu: (Boolean) -> Unit
+) {
     when (weatherState) {
         is WeatherViewModel.WeatherState.Loading -> {
             LoadingScreen()
@@ -86,15 +151,17 @@ fun WeatherApp(viewModel: WeatherViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { /* Open drawer */ }) {
+                    IconButton(onClick = {
+                        coroutineScope.launch { drawerState.open() }
+                    }) {
                         Icon(
                             imageVector = Icons.Default.Menu,
                             contentDescription = "Menu"
                         )
                     }
-                    
+
                     TextButton(
-                        onClick = { showLocationSelector = !showLocationSelector }
+                        onClick = { onShowLocationSelector(!showLocationSelector) }
                     ) {
                         Text(weatherData.location.name)
                         Icon(
@@ -102,17 +169,17 @@ fun WeatherApp(viewModel: WeatherViewModel) {
                             contentDescription = "Location"
                         )
                     }
-                    
+
                     Row {
                         // API source toggle button
-                        IconButton(onClick = { showApiSourceDialog = true }) {
+                        IconButton(onClick = { onShowApiSourceDialog(true) }) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = "API Source"
                             )
                         }
-                        
-                        IconButton(onClick = { /* More options */ }) {
+
+                        IconButton(onClick = { onShowMoreMenu(true) }) {
                             Icon(
                                 imageVector = Icons.Default.MoreVert,
                                 contentDescription = "More"
@@ -121,18 +188,26 @@ fun WeatherApp(viewModel: WeatherViewModel) {
                     }
                 }
                 
+                // More Options Menu
+                if (showMoreMenu) {
+                    MoreOptionsMenu(
+                        viewModel = viewModel,
+                        onDismiss = { onShowMoreMenu(false) }
+                    )
+                }
+
                 // API Source Dialog
                 if (showApiSourceDialog) {
                     ApiSourceDialog(
                         useMetNorway = viewModel.useMetNorway,
                         onConfirm = {
                             viewModel.toggleApiSource()
-                            showApiSourceDialog = false
+                            onShowApiSourceDialog(false)
                         },
-                        onDismiss = { showApiSourceDialog = false }
+                        onDismiss = { onShowApiSourceDialog(false) }
                     )
                 }
-                
+
                 // Location selector popup
                 if (showLocationSelector) {
                     Card(
@@ -147,7 +222,7 @@ fun WeatherApp(viewModel: WeatherViewModel) {
                                 coroutineScope.launch {
                                     viewModel.selectLocation(location)
                                 }
-                                showLocationSelector = false
+                                onShowLocationSelector(false)
                             }
                         )
                     }
@@ -174,22 +249,29 @@ fun WeatherApp(viewModel: WeatherViewModel) {
                         isDarkMode = false
                     )
                     
-                    // Daylight visualization (simulated data for now)
-                    // For Nuuk in March (spring)
-                    DaylightVisualization(
-                        sunrise = LocalTime.of(6, 45),
-                        sunset = LocalTime.of(18, 15),
-                        currentTime = LocalTime.now(),
-                        date = LocalDate.now(),
-                        isDarkMode = false,
-                        isPolarDay = false,
-                        isPolarNight = false,
-                        daylightHours = 11.5f,
-                        civilTwilightMorning = LocalTime.of(6, 15),
-                        civilTwilightEvening = LocalTime.of(18, 45),
-                        nauticalTwilightMorning = LocalTime.of(5, 45),
-                        nauticalTwilightEvening = LocalTime.of(19, 15)
-                    )
+                    // Daylight visualization with real sunrise/sunset data
+                    val locationData = MetNoWeatherService.greenlandLocations[weatherData.location.name]
+                    if (locationData != null) {
+                        val sunTimes = SunriseSunsetCalculator.calculate(
+                            locationData.lat,
+                            locationData.lon,
+                            LocalDate.now()
+                        )
+                        DaylightVisualization(
+                            sunrise = sunTimes.sunrise,
+                            sunset = sunTimes.sunset,
+                            currentTime = LocalTime.now(),
+                            date = LocalDate.now(),
+                            isDarkMode = false,
+                            isPolarDay = sunTimes.isPolarDay,
+                            isPolarNight = sunTimes.isPolarNight,
+                            daylightHours = sunTimes.daylightHours,
+                            civilTwilightMorning = sunTimes.civilTwilightMorning,
+                            civilTwilightEvening = sunTimes.civilTwilightEvening,
+                            nauticalTwilightMorning = sunTimes.nauticalTwilightMorning,
+                            nauticalTwilightEvening = sunTimes.nauticalTwilightEvening
+                        )
+                    }
                     
                     // Sea ice conditions (simulated data for now)
                     SeaIceConditions(
@@ -279,4 +361,89 @@ fun ApiSourceDialog(
             }
         }
     )
+}
+
+@Composable
+fun NavigationDrawerContent(
+    onSettingsClick: () -> Unit,
+    onCloseDrawer: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "Silassaq",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(vertical = 16.dp)
+        )
+
+        Divider()
+
+        NavigationDrawerItem(
+            label = { Text("Settings") },
+            selected = false,
+            onClick = onSettingsClick,
+            icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+
+        NavigationDrawerItem(
+            label = { Text("About") },
+            selected = false,
+            onClick = { /* TODO: Navigate to About */ },
+            icon = { Icon(Icons.Default.Info, contentDescription = null) },
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Text(
+            text = "Version 1.0.0",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+    }
+}
+
+@Composable
+fun MoreOptionsMenu(
+    viewModel: WeatherViewModel,
+    onDismiss: () -> Unit
+) {
+    DropdownMenu(
+        expanded = true,
+        onDismissRequest = onDismiss
+    ) {
+        DropdownMenuItem(
+            text = { Text("Refresh") },
+            onClick = {
+                viewModel.refreshWeather()
+                onDismiss()
+            },
+            leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) }
+        )
+
+        DropdownMenuItem(
+            text = { Text("Share Weather") },
+            onClick = {
+                // TODO: Implement share functionality
+                onDismiss()
+            },
+            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) }
+        )
+
+        Divider()
+
+        DropdownMenuItem(
+            text = { Text("Report Issue") },
+            onClick = {
+                // TODO: Navigate to issue reporting
+                onDismiss()
+            },
+            leadingIcon = { Icon(Icons.Default.Warning, contentDescription = null) }
+        )
+    }
 }
