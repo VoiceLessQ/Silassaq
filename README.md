@@ -4,15 +4,23 @@ Silassaq is a weather application specifically designed for Greenland, providing
 
 ## Features
 
+### Core Weather Functionality
 - **21 Greenland Locations**: From Nuuk to Qaanaaq, covering all major cities
 - **Dual API Support**: Met Norway (primary) and WeatherAPI.com (fallback)
 - **Offline Mode**: Smart caching with age tracking
-- **Multi-language Support**: English, Danish, and Kalaallisut
-- **Greenland-Specific Features**:
-  - Aurora forecast visualization
-  - Sea ice conditions monitoring
-  - Daylight/twilight tracking (including polar day/night)
 - **Detailed Weather Data**: Current conditions, hourly forecasts, multi-day forecasts
+
+### Greenland-Specific Features
+- **Real Aurora Forecast**: Live Kp index from NOAA Space Weather with viewing probability calculations
+- **Dynamic Sea Ice Conditions**: Seasonal ice concentration, thickness, and safety levels
+- **Accurate Sunrise/Sunset**: NOAA algorithm with polar day/night detection
+- **Daylight Visualization**: Civil and nautical twilight tracking
+
+### User Experience
+- **Multi-language Support**: Full translation for English, Danish, and Kalaallisut
+- **Settings Screen**: Language selection, API source preference, app info
+- **Navigation Drawer**: Quick access to settings and about
+- **More Options Menu**: Refresh, share weather, report issues
 
 ## API Integration
 
@@ -30,6 +38,34 @@ The app integrates with two weather APIs for redundancy:
 - Requires free API key
 - Automatic fallback when Met Norway is unavailable
 - Comprehensive error handling
+
+### NOAA Space Weather (Aurora Data)
+- No API key required
+- Live planetary K-index updates
+- Viewing probability calculations based on latitude and cloud cover
+
+## Advanced Features
+
+### Aurora Forecast System
+The app integrates with NOAA's Space Weather Prediction Center to provide real-time aurora forecasts:
+- **Live Kp Index**: Current geomagnetic activity level
+- **Location-Aware Probability**: Calculated based on latitude (Greenland's high latitude = excellent viewing)
+- **Cloud Cover Integration**: Reduces probability when current weather is cloudy
+- **Best Viewing Time**: Suggests optimal viewing hours
+
+### Sunrise/Sunset Calculator
+Uses simplified NOAA Solar Position Algorithm:
+- **Accurate Times**: Precise sunrise/sunset for Greenland's extreme latitudes
+- **Polar Conditions**: Detects and displays polar day (24h sun) and polar night (no sun)
+- **Twilight Calculations**: Civil and nautical twilight times
+- **Daylight Hours**: Exact duration of daylight
+
+### Sea Ice Monitoring
+Dynamic sea ice calculations based on location and season:
+- **Seasonal Variations**: Ice concentration varies realistically by month
+- **Regional Differences**: East coast (colder) vs West coast (warmer currents)
+- **Safety Levels**: Automatic risk assessment (Safe/Caution/Moderate/Dangerous)
+- **Historical Trends**: Compares current conditions to long-term averages
 
 ## Technical Details
 

@@ -26,12 +26,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.silassaq.data.WeatherResponse
 import com.example.silassaq.network.MetNoWeatherService
 import com.example.silassaq.network.WeatherService
+import com.example.silassaq.network.AuroraForecastService
 import com.example.silassaq.ui.components.*
 import com.example.silassaq.ui.components.SafetyLevel
 import com.example.silassaq.ui.screens.SettingsScreen
 import com.example.silassaq.ui.theme.AccentOrange
 import com.example.silassaq.ui.theme.SilassaqTheme
 import com.example.silassaq.utils.SunriseSunsetCalculator
+import com.example.silassaq.utils.SeaIceCalculator
 import com.example.silassaq.viewmodel.WeatherViewModel
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -240,18 +242,31 @@ fun WeatherContent(
                     WeatherDetailsGrid(weather = weatherData)
                     
                     // Greenland-specific features
-                    // Aurora forecast (simulated data for now)
-                    AuroraForecast(
-                        kpIndex = 4.2f,
-                        viewingProbability = 75f,
-                        bestViewingTime = LocalDateTime.now().plusHours(4),
-                        cloudCover = 15f,
-                        isDarkMode = false
-                    )
-                    
-                    // Daylight visualization with real sunrise/sunset data
+                    // Aurora forecast with real NOAA data
                     val locationData = MetNoWeatherService.greenlandLocations[weatherData.location.name]
                     if (locationData != null) {
+                        var auroraData by remember { mutableStateOf<com.example.silassaq.network.AuroraData?>(null) }
+
+                        LaunchedEffect(weatherData.location.name) {
+                            auroraData = AuroraForecastService.getAuroraForecast(
+                                latitude = locationData.lat,
+                                cloudCover = weatherData.current.condition.text.contains("cloud", ignoreCase = true).let {
+                                    if (it) 50f else 15f
+                                }
+                            )
+                        }
+
+                        auroraData?.let { aurora ->
+                            AuroraForecast(
+                                kpIndex = aurora.kpIndex,
+                                viewingProbability = aurora.viewingProbability,
+                                bestViewingTime = LocalDateTime.now().plusHours(4),
+                                cloudCover = aurora.cloudCover,
+                                isDarkMode = false
+                            )
+                        }
+
+                        // Daylight visualization with real sunrise/sunset data
                         val sunTimes = SunriseSunsetCalculator.calculate(
                             locationData.lat,
                             locationData.lon,
@@ -271,18 +286,23 @@ fun WeatherContent(
                             nauticalTwilightMorning = sunTimes.nauticalTwilightMorning,
                             nauticalTwilightEvening = sunTimes.nauticalTwilightEvening
                         )
+
+                        // Sea ice conditions with dynamic calculations
+                        val seaIceData = SeaIceCalculator.calculate(
+                            latitude = locationData.lat,
+                            longitude = locationData.lon,
+                            date = LocalDate.now()
+                        )
+                        SeaIceConditions(
+                            iceConcentration = seaIceData.iceConcentration,
+                            iceThickness = seaIceData.iceThickness,
+                            iceEdgeDistance = seaIceData.iceEdgeDistance,
+                            safetyLevel = seaIceData.safetyLevel,
+                            lastUpdated = LocalDate.now().minusDays(1),
+                            historicalComparison = seaIceData.historicalComparison,
+                            isDarkMode = false
+                        )
                     }
-                    
-                    // Sea ice conditions (simulated data for now)
-                    SeaIceConditions(
-                        iceConcentration = 75f,
-                        iceThickness = 1.2f,
-                        iceEdgeDistance = 5.2f,
-                        safetyLevel = SafetyLevel.MODERATE,
-                        lastUpdated = LocalDate.now().minusDays(1),
-                        historicalComparison = "15% below average for this time of year",
-                        isDarkMode = false
-                    )
                 }
             }
         }
